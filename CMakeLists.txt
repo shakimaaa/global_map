@@ -67,10 +67,10 @@ install(TARGETS globalMap
 )
 
 # Install launch files
-install(
-  DIRECTORY launch
-  DESTINATION share/${PROJECT_NAME}/launch
-)
+# install(
+#   DIRECTORY launch
+#   DESTINATION share/${PROJECT_NAME}/launch
+# )
 
 # Install executable
 install(TARGETS global_map_node

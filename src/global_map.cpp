@@ -4,8 +4,26 @@
 namespace global_map {
 
 OctomapMerger::OctomapMerger() : Node("gloabl_map_node") {
+
+    // Declare and get parameters
+    this->declare_parameter("octomap.resolution", 0.2);
+    this->declare_parameter("octomap.prob_hit", 0.7);
+    this->declare_parameter("octomap.prob_miss", 0.45);
+    this->declare_parameter("octomap.clamping_thres_min", 0.12);
+    this->declare_parameter("octomap.clamping_thres_max", 0.97);
+
+    this->get_parameter("octomap.resolution", resolution_);
+    this->get_parameter("octomap.prob_hit", prob_hit_);
+    this->get_parameter("octomap.prob_miss", prob_miss_);
+    this->get_parameter("octomap.clamping_thres_min", clamping_thres_min_);
+    this->get_parameter("octomap.clamping_thres_max", clamping_thres_max_);
+
     // Initialize the global octree with a resolution of 0.1 meters
-    global_octree_ = std::make_shared<octomap::OcTree>(0.05);
+    global_octree_ = std::make_shared<octomap::OcTree>(resolution_);
+    global_octree_->setProbHit(prob_hit_);
+    global_octree_->setProbMiss(prob_miss_);
+    global_octree_->setClampingThresMin(clamping_thres_min_);
+    global_octree_->setClampingThresMax(clamping_thres_max_);
 
     // Create a subscriber to listen for incoming octomap messages
     octomap_subscriber_ = this->create_subscription<octomap_msgs::msg::Octomap>(
@@ -22,22 +40,32 @@ void OctomapMerger::mergeOctomaps(const octomap_msgs::msg::Octomap::SharedPtr ms
     // Convert the incoming octomap message to an octree
     octomap::AbstractOcTree* new_octree = octomap_msgs::msgToMap(*msg);
 
-    if (new_octree) {
-        // Merge the new octree into the global octree
-        octomap::OcTree* local_octree = dynamic_cast<octomap::OcTree*>(new_octree);
-        if (local_octree){
-            for (auto it = local_octree->begin(); it != local_octree->end(); ++it) {
-                // Insert each occupied node from the local octree into the global octree
-                if (local_octree->isNodeOccupied(*it)) {
-                    global_octree_->updateNode(it.getKey(), true);
-                }   
-            }
-        }
-        delete local_octree; // Clean up the temporary octree
-        RCLCPP_INFO(this->get_logger(), "Merged new octomap into global octree.");
-    }else {
+    if (!new_octree) {
         RCLCPP_ERROR(this->get_logger(), "Failed to convert octomap message to octree.");
+        return;
     }
+
+    // cast to OcTree
+    octomap::OcTree* octree = dynamic_cast<octomap::OcTree*>(new_octree);
+    if (!octree) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to cast octree.");
+        return;
+    }
+
+    //Update the global octree with the new octree
+    for (auto it = octree->begin_leafs(); it != octree->end_leafs(); ++it) {
+        octomap::OcTreeKey key = it.getKey();
+        float prob = it->getOccupancy();
+        global_octree_->setNodeValue(key, prob, false);
+    }
+
+    // Update internal nodes
+    global_octree_->updateInnerOccupancy();
+
+    RCLCPP_INFO(this->get_logger(), "Merged new octomap into global octree.");
+
+    delete octree;  // Clean up
+    
 }
 
 void OctomapMerger::publishMergedOctomap() {

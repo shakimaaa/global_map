@@ -33,6 +33,13 @@ private:
 
     std::shared_ptr<octomap::OcTree> global_octree_;
 
+    // Parameters
+    double resolution_;
+    double prob_hit_;
+    double prob_miss_;
+    double clamping_thres_min_;
+    double clamping_thres_max_;
+
 
 
 
